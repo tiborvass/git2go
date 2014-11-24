@@ -2,9 +2,18 @@ package git
 
 /*
 #include <git2.h>
+#include <git2/errors.h>
+// for memcpy
+#include <string.h>
+
+#include "wrapper.h"
 
 extern int _go_git_odb_foreach(git_odb *db, void *payload);
 extern void _go_git_odb_backend_free(git_odb_backend *backend);
+
+//extern git_odb_writepack *new_go_odb_writepack(git_odb_backend *backend, void *self);
+extern git_odb_backend *new_go_odb_backend(void *);
+extern void *odb_backend_to_go_interface(git_odb_backend *);
 */
 import "C"
 import (
@@ -21,6 +30,12 @@ type OdbBackend struct {
 	ptr *C.git_odb_backend
 }
 
+/*
+type OdbWritePack struct {
+	ptr *C.git_odb_writepack
+}
+*/
+
 func NewOdb() (odb *Odb, err error) {
 	odb = new(Odb)
 
@@ -36,10 +51,29 @@ func NewOdb() (odb *Odb, err error) {
 	return odb, nil
 }
 
-func NewOdbBackendFromC(ptr *C.git_odb_backend) (backend *OdbBackend) {
-	backend = &OdbBackend{ptr}
-	return backend
+func NewOdbBackendFromC(ptr *C.git_odb_backend) *OdbBackend {
+	return &OdbBackend{ptr}
 }
+
+func NewOdbBackendFromGo(goOdbBackend GoOdbBackend) *OdbBackend {
+	p := unsafe.Pointer(&goOdbBackend)
+	doNotGC[p] = struct{}{}
+	return &OdbBackend{C.new_go_odb_backend(p)}
+}
+
+/*
+func NewOdbWritePackFromC(ptr *C.git_odb_writepack) *OdbWritePack {
+	return &OdbWritePack{ptr}
+}
+
+func NewOdbWritePackFromGo(goOdbWritePack GoOdbWritePack, backend *OdbBackend) *OdbWritePack {
+	return &OdbWritePack{C.new_go_odb_writepack(backend.ptr, unsafe.Pointer(&goOdbWritePack))}
+}
+
+func (v *Odb) WritePack() *OdbWritePack {
+	return nil
+}
+*/
 
 func (v *Odb) AddBackend(backend *OdbBackend, priority int) (err error) {
 
@@ -296,3 +330,148 @@ func (stream *OdbWriteStream) Free() {
 	runtime.SetFinalizer(stream, nil)
 	C.git_odb_stream_free(stream.ptr)
 }
+
+type GoOdbBackend interface {
+	Read(oid *Oid) ([]byte, ObjectType, error)
+	ReadPrefix(shortId []byte) ([]byte, ObjectType, *Oid, error)
+	ReadHeader(oid *Oid) (int, ObjectType, error)
+	Write(oid *Oid, buf []byte, oType ObjectType) error
+	//WriteStream(...) error
+	//ReadStream(...) error
+	Exists(oid *Oid) bool
+	ExistsPrefix(shortId []byte) (*Oid, bool)
+	Refresh() error
+	ForEach(cb OdbForEachCallback) error
+	//WritePack(odb *Odb) GoOdbWritePack
+	Free()
+}
+
+/*
+type GoOdbWritePack interface {
+	Append() error
+	Commit() error
+	Free()
+}
+*/
+
+//export _Go_odb_backend__read
+func _Go_odb_backend__read(data_p *unsafe.Pointer, len_p *C.size_t, type_p *C.git_otype, _backend *C.git_odb_backend, coid *C.git_oid) C.int {
+	backend := *(*GoOdbBackend)(C.odb_backend_to_go_interface(_backend))
+	data, oType, err := backend.Read(newOidFromC(coid))
+	if err != nil {
+		return handleError(err)
+	}
+	*len_p = (C.size_t)(len(data))
+	*data_p = C.git_odb_backend_malloc(_backend, C.size_t(unsafe.Sizeof(data_p)*uintptr(len(data))))
+	if len(data) > 0 {
+		C.memcpy(*data_p, unsafe.Pointer(&data[0]), C.size_t(len(data)))
+	}
+	*type_p = (C.git_otype)(oType)
+	return C.GIT_OK
+}
+
+//export _Go_odb_backend__read_prefix
+func _Go_odb_backend__read_prefix(oid *C.git_oid, data_p *unsafe.Pointer, len_p *C.size_t, type_p *C.git_otype, _backend *C.git_odb_backend, coid *C.git_oid, size C.size_t) C.int {
+	backend := *(*GoOdbBackend)(C.odb_backend_to_go_interface(_backend))
+	data, oType, id, err := backend.ReadPrefix(C.GoBytes(unsafe.Pointer(coid), C.int(size)))
+	if err != nil {
+		return handleError(err)
+	}
+	*oid = *id.toC()
+	*len_p = (C.size_t)(len(data))
+	*data_p = C.git_odb_backend_malloc(_backend, C.size_t(unsafe.Sizeof(data_p)*uintptr(len(data))))
+	if len(data) > 0 {
+		C.memcpy(*data_p, unsafe.Pointer(&data[0]), C.size_t(len(data)))
+	}
+	*type_p = (C.git_otype)(oType)
+	return C.GIT_OK
+}
+
+//export _Go_odb_backend__read_header
+func _Go_odb_backend__read_header(len_p *C.size_t, type_p *C.git_otype, _backend *C.git_odb_backend, coid *C.git_oid) C.int {
+	backend := *(*GoOdbBackend)(C.odb_backend_to_go_interface(_backend))
+	size, oType, err := backend.ReadHeader(newOidFromC(coid))
+	if err != nil {
+		return handleError(err)
+	}
+	*len_p = (C.size_t)(size)
+	*type_p = (C.git_otype)(oType)
+	return C.GIT_OK
+}
+
+//export _Go_odb_backend__write
+func _Go_odb_backend__write(_backend *C.git_odb_backend, coid *C.git_oid, cdata unsafe.Pointer, size C.size_t, otype C.git_otype) C.int {
+	backend := *(*GoOdbBackend)(C.odb_backend_to_go_interface(_backend))
+	if err := backend.Write(newOidFromC(coid), C.GoBytes(cdata, C.int(size)), ObjectType(otype)); err != nil {
+		return handleError(err)
+	}
+	return C.GIT_OK
+}
+
+//export _Go_odb_backend__exists
+func _Go_odb_backend__exists(_backend *C.git_odb_backend, coid *C.git_oid) C.int {
+	p := (C.odb_backend_to_go_interface(_backend))
+	backend := *(*GoOdbBackend)(p)
+	backend.Free()
+	if !backend.Exists(newOidFromC(coid)) {
+		return 0
+	}
+	return 1
+}
+
+//export _Go_odb_backend__exists_prefix
+func _Go_odb_backend__exists_prefix(oid *C.git_oid, _backend *C.git_odb_backend, coid *C.git_oid, size C.size_t) C.int {
+	backend := *(*GoOdbBackend)(C.odb_backend_to_go_interface(_backend))
+	id, ok := backend.ExistsPrefix(C.GoBytes(unsafe.Pointer(coid), C.int(size)))
+	if !ok {
+		return 0
+	}
+	*oid = *id.toC()
+	return 1
+}
+
+//export _Go_odb_backend__refresh
+func _Go_odb_backend__refresh(_backend *C.git_odb_backend) C.int {
+	backend := *(*GoOdbBackend)(C.odb_backend_to_go_interface(_backend))
+	if err := backend.Refresh(); err != nil {
+		return handleError(err)
+	}
+	return C.GIT_OK
+}
+
+//export _Go_odb_backend__foreach
+func _Go_odb_backend__foreach(_backend *C.git_odb_backend, cb C.git_odb_foreach_cb, payload unsafe.Pointer) C.int {
+	data := (*foreachData)(payload)
+	backend := *(*GoOdbBackend)(C.odb_backend_to_go_interface(_backend))
+	if err := backend.ForEach(data.callback); err != nil {
+		data.err = err
+		return C.GIT_EUSER
+	}
+	return C.GIT_OK
+}
+
+/*
+//export _Go_odb_backend__writepack
+func _Go_odb_backend__writepack(out **C.git_odb_writepack, _backend *C.git_odb_backend, odb *C.git_odb, progress_cb C.git_transfer_progress_cb, progress_payload unsafe.Pointer) int {
+	backend := *(*GoOdbBackend)(unsafe.Pointer(_backend))
+	writepack := backend.WritePack(nil)
+	*out = NewOdbWritePackFromGo(writepack, &OdbBackend{_backend}).ptr
+	return C.GIT_OK
+}
+*/
+
+//export _Go_odb_backend__free
+func _Go_odb_backend__free(_backend *C.git_odb_backend) {
+	backend := *(*GoOdbBackend)(C.odb_backend_to_go_interface(_backend))
+	backend.Free()
+	C.free(unsafe.Pointer(_backend))
+}
+
+/*
+//export _Go_odb_backend__writepack_free
+func _Go_odb_backend__writepack_free(_writepack *C.git_odb_writepack) {
+	writepack := *(*GoOdbWritePack)(unsafe.Pointer(_writepack))
+	writepack.Free()
+	C.free(unsafe.Pointer(_writepack))
+}
+*/

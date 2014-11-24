@@ -2,6 +2,9 @@
 #include <git2.h>
 #include <git2/sys/odb_backend.h>
 #include <git2/sys/refdb_backend.h>
+#include "wrapper.h"
+// #include "git2/submodule.h"
+// #include "git2/pack.h"
 
 typedef int (*gogit_submodule_cbk)(git_submodule *sm, const char *name, void *payload);
 
@@ -131,4 +134,53 @@ int _go_git_index_remove_all(git_index *index, const git_strarray *pathspec, voi
 	return git_index_remove_all(index, pathspec, cb, callback);
 }
 
+/*
+ * Go Odb Backend
+ */
+
+typedef int (*odb_backend__read)(void **, size_t *, git_otype *, git_odb_backend *, const git_oid *);
+typedef int (*odb_backend__read_prefix)(git_oid *, void **, size_t *, git_otype *, git_odb_backend *, const git_oid *, size_t);
+typedef int (*odb_backend__read_header)(size_t *, git_otype *, git_odb_backend *, const git_oid *);
+typedef int (*odb_backend__write)(git_odb_backend *, const git_oid *, const void *, size_t, git_otype);
+//typedef int (*odb_backend__writestream)(git_odb_stream **, git_odb_backend *, size_t, git_otype);
+//typedef int (*odb_backend__readstream)(git_odb_stream **, git_odb_backend *, const git_oid *);
+typedef int (*odb_backend__exists)(git_odb_backend *, const git_oid *);
+typedef int (*odb_backend__exists_prefix)(git_oid *, git_odb_backend *, const git_oid *, size_t);
+typedef int (*odb_backend__refresh)(git_odb_backend *);
+typedef int (*odb_backend__foreach)(git_odb_backend *, git_odb_foreach_cb, void*);
+//typedef int (*odb_backend__writepack)(git_odb_writepack **, git_odb_backend *, git_odb *, git_transfer_progress_cb, void *);
+typedef void (*odb_backend__free)(git_odb_backend *);
+
+git_odb_backend *new_go_odb_backend(void *interface) {
+	go_odb_backend *backend = calloc(1, sizeof(go_odb_backend));
+	backend->parent.version = 1;
+	backend->parent.read = (odb_backend__read) &_Go_odb_backend__read;
+	backend->parent.read_prefix = (odb_backend__read_prefix) &_Go_odb_backend__read_prefix;
+	backend->parent.read_header = (odb_backend__read_header) &_Go_odb_backend__read_header;
+	backend->parent.write = (odb_backend__write) &_Go_odb_backend__write;
+	//backend->parent.writestream = (odb_backend__writestream) &_Go_odb_backend__writestream;
+	//backend->parent.readstream = (odb_backend__readstream) &_Go_odb_backend__readstream;
+	backend->parent.exists = (odb_backend__exists) &_Go_odb_backend__exists;
+	backend->parent.exists_prefix = (odb_backend__exists_prefix) &_Go_odb_backend__exists_prefix;
+	backend->parent.refresh = (odb_backend__refresh) &_Go_odb_backend__refresh;
+	backend->parent.foreach = (odb_backend__foreach) &_Go_odb_backend__foreach;
+	//backend->parent.writepack = (odb_backend__writepack)&_Go_odb_backend__writepack;
+	backend->parent.free = (odb_backend__free)&_Go_odb_backend__free;
+	backend->go_interface = interface;
+	return (git_odb_backend*)backend;
+}
+
+void *odb_backend_to_go_interface(git_odb_backend *backend) {
+	return ((go_odb_backend*)backend)->go_interface;
+}
+
+/*
+git_odb_writepack *new_go_odb_writepack(git_odb_backend *backend, void *self) {
+	go_odb_writepack *writepack = calloc(1, sizeof(go_odb_writepack));
+	writepack->parent.backend = backend;
+	writepack->parent.free = &_Go_odb_backend__writepack_free;
+	writepack->go_interface = self;
+	return (git_odb_writepack*)writepack;
+}
+*/
 /* EOF */
