@@ -2,6 +2,8 @@ package git
 
 /*
 #include <git2.h>
+// #include <git2/errors.h>
+#include <git2/sys/refdb_backend.h>
 */
 import "C"
 import (

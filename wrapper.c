@@ -183,4 +183,50 @@ git_odb_writepack *new_go_odb_writepack(git_odb_backend *backend, void *self) {
 	return (git_odb_writepack*)writepack;
 }
 */
+/*
+ * Go Refdb Backend
+ */
+typedef int (*refdb_backend__exists)(int*, git_refdb_backend*, const char*);
+typedef int (*refdb_backend__lookup)(git_reference**, git_refdb_backend*, const char*);
+//typedef int (*refdb_backend__iterator)(git_reference_iterator**, git_refdb_backend*, const char*);
+typedef int (*refdb_backend__write)(git_refdb_backend*, const git_reference*, int, const git_signature*, const char*, const git_oid*, const char*);
+typedef int (*refdb_backend__rename)(git_reference**, git_refdb_backend*, const char*, const char*, int, const git_signature*, const char*);
+typedef int (*refdb_backend__del)(git_refdb_backend*, const char*, const git_oid*, const char*);
+typedef int (*refdb_backend__compress)(git_refdb_backend*);
+typedef int (*refdb_backend__has_log)(git_refdb_backend*, const char*);
+typedef int (*refdb_backend__ensure_log)(git_refdb_backend*, const char*);
+typedef void (*refdb_backend__free)(git_refdb_backend*);
+//typedef int (*refdb_backend__reflog_read)(git_reflog**, git_refdb_backend*, const char*);
+//typedef int (*refdb_backend__reflog_write)(git_refdb_backend*, git_reflog*);
+//typedef int (*refdb_backend__reflog_rename)(git_refdb_backend*, const char*, const char*);
+//typedef int (*refdb_backend__reflog_delete)(git_refdb_backend*, const char*);
+typedef int (*refdb_backend__lock)(void**, git_refdb_backend*, const char*);
+typedef int (*refdb_backend__unlock)(git_refdb_backend*, void*, int, int, const git_reference*, const git_signature*, const char*);
+
+git_refdb_backend *new_go_refdb_backend(void *interface) {
+	go_refdb_backend *backend = calloc(1, sizeof(go_refdb_backend));
+	backend->parent.version = 1;
+	backend->parent.exists = (refdb_backend__exists) &_Go_refdb_backend__exists;
+	backend->parent.lookup = (refdb_backend__lookup) &_Go_refdb_backend__lookup;
+	//backend->parent.iterator = (refdb_backend__iterator) &_Go_refdb_backend__iterator;
+	backend->parent.write = (refdb_backend__write) &_Go_refdb_backend__write;
+	backend->parent.rename = (refdb_backend__rename) &_Go_refdb_backend__rename;
+	backend->parent.del = (refdb_backend__del) &_Go_refdb_backend__del;
+	backend->parent.compress = (refdb_backend__compress) &_Go_refdb_backend__compress;
+	backend->parent.has_log = (refdb_backend__has_log) &_Go_refdb_backend__has_log;
+	backend->parent.ensure_log = (refdb_backend__ensure_log) &_Go_refdb_backend__ensure_log;
+	backend->parent.free = (refdb_backend__free) &_Go_refdb_backend__free;
+	//backend->parent.reflog_read = (refdb_backend__reflog_read) &_Go_refdb_backend__reflog_read;
+	//backend->parent.reflog_write = (refdb_backend__reflog_write) &_Go_refdb_backend__reflog_write;
+	//backend->parent.reflog_rename = (refdb_backend__reflog_rename) &_Go_refdb_backend__reflog_rename;
+	//backend->parent.reflog_delete = (refdb_backend__reflog_delete) &_Go_refdb_backend__reflog_delete;
+	backend->parent.lock = (refdb_backend__lock) &_Go_refdb_backend__lock;
+	backend->parent.unlock = (refdb_backend__unlock) &_Go_refdb_backend__unlock;
+	backend->go_interface = interface;
+	return (git_refdb_backend*)backend;
+}
+
+void *refdb_backend_to_go_interface(git_refdb_backend *backend) {
+	return ((go_refdb_backend*)backend)->go_interface;
+}
 /* EOF */
