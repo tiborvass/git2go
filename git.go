@@ -10,10 +10,16 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
+	"log"
 	"runtime"
 	"strings"
 	"unsafe"
 )
+
+const _DEBUG = false
+
+// A set of pointers to keep reference to so that the underlying objects do not get garbage collected.
+var doNotGC = map[unsafe.Pointer]struct{}{}
 
 type ErrorClass int
 
@@ -108,6 +114,16 @@ func init() {
 	// in such a way that they can be sure they're the only ones
 	// setting it up.
 	C.git_openssl_set_locking()
+}
+
+func handleError(err error) C.int {
+	if gitErr, ok := err.(*GitError); ok {
+		return C.int(gitErr.Code)
+	}
+	if _DEBUG {
+		log.Println(err)
+	}
+	return C.GIT_ERROR
 }
 
 // Oid represents the id for a Git object.
@@ -264,6 +280,13 @@ func cbool(b bool) C.int {
 		return C.int(1)
 	}
 	return C.int(0)
+}
+
+func gobool(i C.int) bool {
+	if i != 0 {
+		return true
+	}
+	return false
 }
 
 func ucbool(b bool) C.uint {
