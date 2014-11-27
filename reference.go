@@ -240,7 +240,7 @@ func (repo *Repository) NewReferenceIterator() (*ReferenceIterator, error) {
 	return iter, nil
 }
 
-// NewReferenceIterator creates a new branch iterator over reference names
+// NewReferenceNameIterator creates a new branch iterator over reference names
 func (repo *Repository) NewReferenceNameIterator() (*ReferenceNameIterator, error) {
 	var ptr *C.git_reference_iterator
 
