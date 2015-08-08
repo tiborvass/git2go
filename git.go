@@ -97,6 +97,13 @@ const (
 	ErrAuth ErrorCode = C.GIT_EAUTH
 )
 
+func (c ErrorCode) Error() string {
+	runtime.LockOSThread()
+	err := MakeGitError(C.int(c))
+	runtime.UnlockOSThread()
+	return err.Error()
+}
+
 var (
 	ErrInvalid = errors.New("Invalid state for operation")
 )
@@ -117,8 +124,11 @@ func init() {
 }
 
 func handleError(err error) C.int {
-	if gitErr, ok := err.(*GitError); ok {
-		return C.int(gitErr.Code)
+	switch err := err.(type) {
+	case *GitError:
+		return C.int(err.Code)
+	case ErrorCode:
+		return C.int(err)
 	}
 	if _DEBUG {
 		log.Println(err)
