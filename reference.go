@@ -23,6 +23,10 @@ type Reference struct {
 	repo *Repository
 }
 
+func NewReference(repo *Repository) *Reference {
+	return &Reference{repo: repo}
+}
+
 func newReferenceFromC(ptr *C.git_reference, repo *Repository) *Reference {
 	ref := &Reference{ptr: ptr, repo: repo}
 	runtime.SetFinalizer(ref, (*Reference).Free)
